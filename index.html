@@ -181,11 +181,12 @@ async function loadOneDriveExcelFromLink(sharedLink){
   const itemUrl=item.driveId
    ?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(item.driveId)}/items/${encodeURIComponent(item.id)}`
    :`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(item.id)}`;
-  const metadataUrl=new URL(itemUrl);metadataUrl.searchParams.set('$select','id,name,parentReference,file,@microsoft.graph.downloadUrl');
-  const metaResponse=await fetch(metadataUrl,{headers:{Authorization:`Bearer ${token}`}});
+  const metadataUrl=new URL(itemUrl);metadataUrl.searchParams.set('$select','id,@microsoft.graph.downloadUrl');
+  let metaResponse=await fetch(metadataUrl,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}});
   if(!metaResponse.ok)throw Error('Die ausgewählte Datei konnte nicht geöffnet werden ('+metaResponse.status+').');
-  const meta=await metaResponse.json(),downloadUrl=meta['@microsoft.graph.downloadUrl'];
-  if(!downloadUrl)throw Error('OneDrive hat keinen Downloadlink für die Datei bereitgestellt.');
+  let meta=await metaResponse.json(),downloadUrl=meta['@microsoft.graph.downloadUrl'];
+  if(!downloadUrl){const fallbackUrl=new URL(itemUrl);metaResponse=await fetch(fallbackUrl,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}});if(metaResponse.ok){meta=await metaResponse.json();downloadUrl=meta['@microsoft.graph.downloadUrl']}}
+  if(!downloadUrl)throw Error('Microsoft Graph hat für diese Datei keinen Download-Link zurückgegeben. Prüfe, ob die Excel-Datei im OneDrive-Ordner direkt freigegeben ist.');
   const download=await fetch(downloadUrl);
   if(!download.ok)throw Error('Die Excel-Datei konnte nicht heruntergeladen werden.');
   const blob=await download.blob();Object.defineProperty(blob,'name',{value:meta.name||item.name});
