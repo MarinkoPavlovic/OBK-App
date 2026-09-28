@@ -95,7 +95,7 @@ renderList();renderDetail();
 /* ==========================
    MICROSOFT LOGIN
    ========================== */
-const msalConfig={auth:{clientId:window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||'MICROSOFT_CLIENT_ID_HIER_EINTRAGEN',authority:'https://login.microsoftonline.com/common',redirectUri:'https://marinkopavlovic.github.io/OBK-App/'}};
+const msalConfig={auth:{clientId:window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||'MICROSOFT_CLIENT_ID_HIER_EINTRAGEN',authority:'https://login.microsoftonline.com/common',redirectUri:'https://marinkopavlovic.github.io/OBK-App/'},cache:{cacheLocation:'localStorage'}};
 const loginRequest={scopes:['User.Read','Files.ReadWrite']};
 let msalInstance=null,msalLibraryPromise=null;
 let msalInitialization=null,msalRedirectHandling=null;
