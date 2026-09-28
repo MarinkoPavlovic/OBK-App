@@ -94,7 +94,7 @@ renderList();renderDetail();
 /* ==========================
    MICROSOFT LOGIN
    ========================== */
-const msalConfig={auth:{clientId:window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||'MICROSOFT_CLIENT_ID_HIER_EINTRAGEN',authority:'https://login.microsoftonline.com/common',redirectUri:window.location.origin}};
+const msalConfig={auth:{clientId:window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||'MICROSOFT_CLIENT_ID_HIER_EINTRAGEN',authority:'https://login.microsoftonline.com/common',redirectUri:window.location.href.split(/[?#]/)[0]}};
 const loginRequest={scopes:['User.Read','Files.ReadWrite']};
 const msalInstance=window.msal?new msal.PublicClientApplication(msalConfig):null;
 let msalInitialization=null;
