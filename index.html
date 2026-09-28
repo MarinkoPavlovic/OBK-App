@@ -97,7 +97,7 @@ renderList();renderDetail();
 const msalConfig={auth:{clientId:window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||'MICROSOFT_CLIENT_ID_HIER_EINTRAGEN',authority:'https://login.microsoftonline.com/common',redirectUri:window.location.href.split(/[?#]/)[0]}};
 const loginRequest={scopes:['User.Read','Files.ReadWrite']};
 let msalInstance=null,msalLibraryPromise=null;
-let msalInitialization=null;
+let msalInitialization=null,msalRedirectHandling=null;
 async function ensureMsalReady(){
  if(!msalInstance){
   if(!msalLibraryPromise)msalLibraryPromise=(async()=>{
@@ -111,12 +111,15 @@ async function ensureMsalReady(){
  }
  if(typeof msalInstance.initialize==='function'&&!msalInitialization)msalInitialization=msalInstance.initialize().catch(err=>{msalInitialization=null;throw err});
  if(msalInitialization)await msalInitialization;
+ if(!msalRedirectHandling)msalRedirectHandling=msalInstance.handleRedirectPromise().then(result=>{if(result?.account)msalInstance.setActiveAccount(result.account);return result}).catch(err=>{msalRedirectHandling=null;throw err});
+ await msalRedirectHandling;
 }
 function getSignedInAccount(){if(!msalInstance)return null;let account=msalInstance.getActiveAccount();if(!account)account=msalInstance.getAllAccounts()[0]||null;if(account)msalInstance.setActiveAccount(account);return account}
-async function signIn(){if(!window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||window.OBJEKTERMITTLUNGS_APP_CONFIG.clientId.includes('HIER_EINTRAGEN')){toast('Die Microsoft-Anmeldung ist noch nicht eingerichtet. Bitte den App-Betreiber kontaktieren.');return}if(location.protocol==='file:'){toast('Microsoft Login benötigt eine veröffentlichte HTTPS-Adresse.');return}try{await ensureMsalReady();const result=await msalInstance.loginPopup(loginRequest);const account=result.account;if(!account)throw Error('Microsoft hat kein Konto zurückgegeben.');msalInstance.setActiveAccount(account);document.getElementById('userInfo').textContent=account.name||account.username||''}catch(err){console.error(err);toast(err.message||'Microsoft-Anmeldung fehlgeschlagen')}}
-async function updateLoginState(){if(!msalInstance)return;await ensureMsalReady();const account=getSignedInAccount();if(!account)return;document.getElementById('userInfo').textContent=account.name||account.username||''}
+async function updateLoginState(){await ensureMsalReady();const account=getSignedInAccount();document.getElementById('userInfo').textContent=account?(account.name||account.username||''):'Nicht angemeldet'}
 async function getAccessToken(allowPopup=true){await ensureMsalReady();const account=getSignedInAccount();if(!account)throw Error('Bitte zuerst über „Excel-Datei aus OneDrive laden“ bei Microsoft anmelden.');try{const response=await msalInstance.acquireTokenSilent({account,scopes:['Files.ReadWrite']});return response.accessToken}catch(err){if(allowPopup&&err instanceof msal.InteractionRequiredAuthError){const response=await msalInstance.acquireTokenPopup({account,scopes:['Files.ReadWrite']});if(response.account)msalInstance.setActiveAccount(response.account);return response.accessToken}throw err}}
-updateLoginState().catch(err=>console.error(err));
+const pendingShareLinkKey='objektermittlung-pending-onedrive-link';
+async function initializeMicrosoft(){try{await updateLoginState();const pending=sessionStorage.getItem(pendingShareLinkKey);if(pending&&getSignedInAccount()){sessionStorage.removeItem(pendingShareLinkKey);await loadOneDriveExcelFromLink(pending)}}catch(err){console.error(err);document.getElementById('userInfo').textContent='Microsoft-Verbindung nicht verfügbar';}}
+initializeMicrosoft();
 /* Replaces content by the selected user's existing OneDrive item ID. */
 async function saveToOneDrive(blob,item,allowPopup=true){if(!item?.id)throw Error('Die OneDrive-Datei wurde nicht ausgewählt.');const token=await getAccessToken(allowPopup),endpoint=item.driveId?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(item.driveId)}/items/${encodeURIComponent(item.id)}/content`:`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(item.id)}/content`,response=await fetch(endpoint,{method:'PUT',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},body:blob});if(!response.ok)throw Error('Upload nach OneDrive fehlgeschlagen ('+response.status+')');return await response.json()}
 function normalizeOneDriveSearchItem(result){
@@ -160,10 +163,19 @@ async function openOneDriveExcel(){
  if(location.protocol==='file:'){toast('Bitte die veröffentlichte Web-App über ihren HTTPS-Link öffnen.');return}
  try{
   await ensureMsalReady();
-  if(!getSignedInAccount()){await signIn();if(!getSignedInAccount())return}
   const sharedLink=window.prompt('OneDrive-Freigabe-Link zur Potenzialliste eingeben:');
   if(!sharedLink?.trim())return;
-  const token=await getAccessToken();let item=await resolveSharedLink(sharedLink.trim(),token);
+  if(!getSignedInAccount()){
+   sessionStorage.setItem(pendingShareLinkKey,sharedLink.trim());
+   await msalInstance.loginRedirect(loginRequest);
+   return;
+  }
+  await loadOneDriveExcelFromLink(sharedLink.trim());
+ }catch(err){toast('OneDrive-Datei konnte nicht geöffnet werden: '+(err.message||'Bitte erneut versuchen.'))}
+}
+async function loadOneDriveExcelFromLink(sharedLink){
+ try{
+  const token=await getAccessToken();let item=await resolveSharedLink(sharedLink,token);
   if(item.kind==='folder')item=await chooseOneDriveFile(await listOneDriveFolder(item,token),token,'Excel-Datei im freigegebenen Ordner auswählen');
   if(!item)return;
   const itemUrl=item.driveId
