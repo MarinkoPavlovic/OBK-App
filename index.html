@@ -122,7 +122,7 @@ async function ensureMsalReady(){
  await msalRedirectHandling;
 }
 function getSignedInAccount(){if(!msalInstance)return null;let account=msalInstance.getActiveAccount();if(!account)account=msalInstance.getAllAccounts()[0]||null;if(account)msalInstance.setActiveAccount(account);return account}
-async function updateLoginState(){await ensureMsalReady();const account=getSignedInAccount(),loginButton=document.getElementById('loginBtn'),openButton=document.getElementById('oneDriveOpenBtn');document.getElementById('userInfo').textContent=account?(account.name||account.username||''):'Bitte anmelden';loginButton.textContent=account?'Microsoft angemeldet':'Microsoft Login';loginButton.disabled=!!account;openButton.disabled=!account}
+async function updateLoginState(){await ensureMsalReady();const account=getSignedInAccount(),loginButton=document.getElementById('loginBtn');document.getElementById('userInfo').textContent=account?(account.name||account.username||''):'Bitte anmelden';loginButton.textContent=account?'Microsoft angemeldet':'Microsoft Login';loginButton.disabled=!!account;updateOneDriveOpenButton()}
 async function getAccessToken(allowPopup=true){await ensureMsalReady();const account=getSignedInAccount();if(!account)throw Error('Bitte zuerst über „Microsoft Login“ anmelden.');try{const response=await msalInstance.acquireTokenSilent({account,scopes:['Files.ReadWrite']});return response.accessToken}catch(err){if(allowPopup&&err instanceof msal.InteractionRequiredAuthError){const response=await msalInstance.acquireTokenPopup({account,scopes:['Files.ReadWrite']});if(response.account)msalInstance.setActiveAccount(response.account);return response.accessToken}throw err}}
 async function loginMicrosoft(){if(!window.OBJEKTERMITTLUNGS_APP_CONFIG?.clientId||window.OBJEKTERMITTLUNGS_APP_CONFIG.clientId.includes('HIER_EINTRAGEN')){toast('Die Microsoft-Anmeldung ist noch nicht eingerichtet. Bitte den App-Betreiber kontaktieren.');return}if(location.origin!=='https://marinkopavlovic.github.io'||!location.pathname.startsWith('/OBK-App/')){toast('Bitte die veröffentlichte App unter https://marinkopavlovic.github.io/OBK-App/ öffnen.');return}try{await ensureMsalReady();await msalInstance.loginRedirect(loginRequest)}catch(err){console.error(err);toast('Microsoft-Anmeldung fehlgeschlagen: '+(err.message||'Bitte erneut versuchen.'))}}
 async function initializeMicrosoft(){const loginButton=document.getElementById('loginBtn'),openButton=document.getElementById('oneDriveOpenBtn');loginButton.disabled=true;openButton.disabled=true;document.getElementById('userInfo').textContent='Microsoft-Verbindung wird geladen …';try{await updateLoginState()}catch(err){console.error(err);document.getElementById('userInfo').textContent='Microsoft-Verbindung nicht verfügbar';loginButton.disabled=false;loginButton.textContent='Microsoft Login';openButton.disabled=true}}
@@ -179,7 +179,8 @@ async function chooseOneDriveFile(items,token,heading='Excel-Datei auswählen'){
 function readSavedOneDriveFolderLink(){try{return localStorage.getItem(oneDriveFolderLinkStorageKey)||''}catch{return ''}}
 function saveOneDriveFolderLink(link){try{localStorage.setItem(oneDriveFolderLinkStorageKey,link)}catch(err){console.warn('Der Ordnerlink konnte nicht lokal gespeichert werden.',err)}updateFolderLinkButton()}
 function clearSavedOneDriveFolderLink(){try{localStorage.removeItem(oneDriveFolderLinkStorageKey)}catch{}updateFolderLinkButton()}
-function updateFolderLinkButton(){const button=document.getElementById('folderLinkBtn');if(button)button.textContent='OneDrive-Ordner'}
+function updateFolderLinkButton(){const button=document.getElementById('folderLinkBtn');if(button)button.textContent='OneDrive-Ordner';updateOneDriveOpenButton()}
+function updateOneDriveOpenButton(){const button=document.getElementById('oneDriveOpenBtn');if(button)button.disabled=!(getSignedInAccount()&&readSavedOneDriveFolderLink())}
 function requestOneDriveFolderLink(initialValue=''){
  return new Promise(resolve=>{
   const overlay=document.createElement('div');overlay.className='folder-link-overlay';
@@ -203,11 +204,13 @@ async function openOneDriveExcel(){
  try{
   await ensureMsalReady();
   if(!getSignedInAccount()){toast('Bitte zuerst auf „Microsoft Login“ tippen und dich anmelden.');return}
-  let savedFolderLink=readSavedOneDriveFolderLink();
-  if(savedFolderLink){const opened=await loadOneDriveExcelFromLink(savedFolderLink);if(opened)return;clearSavedOneDriveFolderLink()}
-  const sharedLink=await requestOneDriveFolderLink(savedFolderLink);
-  if(!sharedLink)return;
-  await loadOneDriveExcelFromLink(sharedLink);
+  const savedFolderLink=readSavedOneDriveFolderLink();
+  if(!savedFolderLink){updateOneDriveOpenButton();toast('Bitte zuerst über „OneDrive-Ordner“ einen freigegebenen Ordner hinterlegen.');return}
+  const opened=await loadOneDriveExcelFromLink(savedFolderLink);
+  if(opened)return;
+  clearSavedOneDriveFolderLink();
+  const replacementLink=await requestOneDriveFolderLink(savedFolderLink);
+  if(replacementLink)await loadOneDriveExcelFromLink(replacementLink);
  }catch(err){toast('OneDrive-Datei konnte nicht geöffnet werden: '+(err.message||'Bitte erneut versuchen.'))}
 }
 async function loadOneDriveExcelFromLink(sharedLink){
