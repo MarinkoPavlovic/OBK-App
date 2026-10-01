@@ -42,13 +42,3 @@ Die Microsoft-App-Registrierung wird pro bereitgestellter Web-App einmal vorgeno
 Die optionale Excel-Spalte `zus` (auch `Zus.`) wird als Bestandteil der Hausnummer eingelesen. In Objektliste und Detailansicht erscheint beispielsweise Nr. `12` mit zus `a` als `12a`. Die Suche findet sowohl `12a` als auch `12 a`. Leere oder fehlende Zusatzspalten bleiben möglich. Die Originalwerte in `Nr.` und `zus` bleiben beim Speichern erhalten.
 
 Für das Update `index.html` und `service-worker.js` auf dem bestehenden Webserver ersetzen, die App neu öffnen und die Excel-Datei erneut laden. Die vorhandenen Icons und Microsoft-Einstellungen weiterverwenden.
-
-## Eigene Notizen
-
-Jeder neue Notizeintrag wird erst durch Klick auf „Eintrag speichern“ unter dem Feld „Neuer Eintrag“ übernommen und erhält genau drei Leerzeichen am Ende des eingegebenen Textes. Der Button ist bei leerem Feld oder ausschließlich Leerzeichen deaktiviert. Entwürfe werden nicht in Excel gespeichert, auch nicht beim automatischen Speichern anderer Felder oder beim Schließen der Liste. Vorhandene Notizen bleiben einschließlich ihrer Leerzeichen erhalten. Mehrfaches automatisches Speichern hängt keine weiteren Leerzeichen an.
-
-## OneDrive-Speicherung
-
-Speicheraufträge werden nacheinander ausgeführt. Beim Klick auf „Eintrag speichern“, „Erneut speichern“ oder „Liste schließen“ kann eine erforderliche Microsoft-Anmeldung bestätigt werden. Hintergrundspeicherung öffnet kein Anmeldefenster. Fehler erscheinen mit ihrer konkreten Ursache unterhalb der Detailansicht; ungespeicherte Änderungen bleiben in der geöffneten Liste. Während eines Uploads neu bearbeitete Daten bleiben bis zum nächsten erfolgreichen Upload als ungespeichert markiert. Notizentwürfe werden weiterhin nur durch den Notizbutton übernommen.
-
-Bei einem Speicherfehler die geöffnete App nicht neu laden: Änderungen im Arbeitsspeicher gehen beim Neuladen verloren. Erst erneut speichern oder den Text anderweitig sichern.
