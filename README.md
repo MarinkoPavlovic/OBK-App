@@ -36,9 +36,3 @@ Beim Excel-Import wird das passende Datenblatt anhand seiner Spaltenüberschrift
 ## Microsoft-Einrichtung
 
 Die Microsoft-App-Registrierung wird pro bereitgestellter Web-App einmal vorgenommen, nicht von jedem Nutzer. Details und die aktuelle Anleitung stehen in der [Microsoft-Dokumentation für Single-Page-Apps](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-spa-app-configuration).
-
-## Hausnummernzusatz (zus)
-
-Die optionale Excel-Spalte `zus` (auch `Zus.`) wird als Bestandteil der Hausnummer eingelesen. In Objektliste und Detailansicht erscheint beispielsweise Nr. `12` mit zus `a` als `12a`. Die Suche findet sowohl `12a` als auch `12 a`. Leere oder fehlende Zusatzspalten bleiben möglich. Die Originalwerte in `Nr.` und `zus` bleiben beim Speichern erhalten.
-
-Für das Update `index.html` und `service-worker.js` auf dem bestehenden Webserver ersetzen, die App neu öffnen und die Excel-Datei erneut laden. Die vorhandenen Icons und Microsoft-Einstellungen weiterverwenden.
