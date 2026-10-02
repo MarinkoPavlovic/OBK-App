@@ -179,7 +179,6 @@ async function chooseOneDriveFile(items,token,heading='Excel-Datei auswählen'){
 }const oneDriveFolderLinkStorageKey='objektermittlungs.sharedFolderLink.v1';
 function readSavedOneDriveFolderLink(){try{return localStorage.getItem(oneDriveFolderLinkStorageKey)||''}catch{return ''}}
 function saveOneDriveFolderLink(link){try{localStorage.setItem(oneDriveFolderLinkStorageKey,link)}catch(err){console.warn('Der Ordnerlink konnte nicht lokal gespeichert werden.',err)}updateFolderLinkButton()}
-function clearSavedOneDriveFolderLink(){try{localStorage.removeItem(oneDriveFolderLinkStorageKey)}catch{}updateFolderLinkButton()}
 function updateFolderLinkButton(){const button=document.getElementById('folderLinkBtn');if(button)button.textContent='OneDrive-Ordner';updateOneDriveOpenButton()}
 function updateOneDriveOpenButton(){const button=document.getElementById('oneDriveOpenBtn');if(button)button.disabled=!(getSignedInAccount()&&readSavedOneDriveFolderLink())}
 function requestOneDriveFolderLink(initialValue=''){
@@ -207,11 +206,7 @@ async function openOneDriveExcel(){
   if(!getSignedInAccount()){toast('Bitte zuerst auf „Microsoft Login“ tippen und dich anmelden.');return}
   const savedFolderLink=readSavedOneDriveFolderLink();
   if(!savedFolderLink){updateOneDriveOpenButton();toast('Bitte zuerst über „OneDrive-Ordner“ einen freigegebenen Ordner hinterlegen.');return}
-  const opened=await loadOneDriveExcelFromLink(savedFolderLink);
-  if(opened)return;
-  clearSavedOneDriveFolderLink();
-  const replacementLink=await requestOneDriveFolderLink(savedFolderLink);
-  if(replacementLink)await loadOneDriveExcelFromLink(replacementLink);
+  await loadOneDriveExcelFromLink(savedFolderLink);
  }catch(err){toast('OneDrive-Datei konnte nicht geöffnet werden: '+(err.message||'Bitte erneut versuchen.'))}
 }
 async function loadOneDriveExcelFromLink(sharedLink){
@@ -247,5 +242,4 @@ document.getElementById('loginBtn').addEventListener('click',loginMicrosoft);
 updateFolderLinkButton();document.getElementById('folderLinkBtn').addEventListener('click',async()=>{await requestOneDriveFolderLink(readSavedOneDriveFolderLink())});document.getElementById('oneDriveOpenBtn').addEventListener('click',openOneDriveExcel);
 (()=>{try{const canUseServiceWorker='serviceWorker' in navigator&&location.protocol!=='file:'&&location.origin!=='null'&&window.isSecureContext;if(canUseServiceWorker)navigator.serviceWorker.register('./service-worker.js').catch(err=>console.warn('Offline-Cache konnte nicht gestartet werden.',err))}catch(err){console.warn('Service Worker ist in dieser Vorschau nicht verfügbar.',err)}})();
 </script></body></html>
-
 
