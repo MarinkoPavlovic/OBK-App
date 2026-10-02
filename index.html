@@ -239,8 +239,7 @@ async function loadOneDriveExcelFromLink(sharedLink){
  sourceZip=null;sourceSheetPath=null;sourceFileHandle=null;sourceWriteAllowed=false;sourceOneDriveItem=null;sourceFilename='';records=[];selected=null;dirtyAdsIds.clear();persist();
  document.getElementById('workbookSummary').textContent='Öffne eine Liste aus dem freigegebenen OneDrive-Ordner';
  renderList();renderDetail();
- try{window.close()}catch{}
- if(!window.closed)toast('Potenzialliste geschlossen.');
+ toast('Potenzialliste geschlossen.');
 }
 document.getElementById('closeAppBtn').addEventListener('click',closeApp);
 document.getElementById('loginBtn').addEventListener('click',loginMicrosoft);
