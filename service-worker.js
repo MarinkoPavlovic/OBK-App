@@ -1,4 +1,4 @@
-const CACHE_NAME = 'objektermittlungs-app-v10';
+const CACHE_NAME = 'objektermittlungs-app-v11';
 const APP_FILES = [
   './',
   './index.html',
@@ -32,7 +32,7 @@ self.addEventListener('fetch', event => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).then(response => {
+      fetch(request, { cache: 'no-store' }).then(response => {
         if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put('./index.html', response.clone()));
         return response;
       }).catch(() => caches.match('./index.html'))
