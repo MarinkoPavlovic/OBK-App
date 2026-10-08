@@ -1,4 +1,4 @@
-const CACHE_NAME = 'objektermittlungs-app-v1.1.18';
+const CACHE_NAME = 'objektermittlungs-app-v1.1.22';
 const APP_FILES = [
   './',
   './index.html',
@@ -29,6 +29,12 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+
+  const appAsset = APP_FILES.some(path => new URL(path, self.registration.scope).href === request.url);
+  if (request.mode !== 'navigate' && appAsset) {
+    event.respondWith(caches.match(request).then(cached => cached || fetch(request)));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(
