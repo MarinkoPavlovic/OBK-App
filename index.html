@@ -283,20 +283,29 @@ async function mergeLocalChanges(remoteZip,localChanges){
  let workbookXml=await remoteZip.file('xl/workbook.xml').async('string');if(/<calcPr[^>]*\/>/.test(workbookXml))workbookXml=workbookXml.replace(/<calcPr([^>]*)\/>/,(m,a)=>'<calcPr'+a.replace(/\s(?:fullCalcOnLoad|forceFullCalc)="[^"]*"/g,'')+' fullCalcOnLoad="1" forceFullCalc="1"/>');else workbookXml=workbookXml.replace('</workbook>','<calcPr calcId="191028" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>');remoteZip.file('xl/workbook.xml',workbookXml);
  return await remoteZip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
+async function currentOneDriveFile(endpoint,token){
+ const headers={Authorization:`Bearer ${token}`};
+ const read=async(url)=>{const response=await fetch(url,{headers,cache:'no-store'});if(!response.ok)throw Error('Die aktuelle OneDrive-Datei konnte nicht geladen werden ('+response.status+'). Änderungen bleiben lokal gesichert.');return {data:await response.json(),tag:response.headers?.get('ETag')||''}};
+ let result=await read(endpoint),metadata=result.data;
+ // A shared shortcut can refer to the actual file in another drive.
+ if(metadata.remoteItem?.id&&metadata.remoteItem.parentReference?.driveId){const remote=metadata.remoteItem;endpoint=`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(remote.parentReference.driveId)}/items/${encodeURIComponent(remote.id)}`;result=await read(endpoint);metadata=result.data}
+ let tag=metadata.eTag||metadata.etag||metadata.cTag||metadata['@odata.etag']||result.tag||'',downloadUrl=metadata['@microsoft.graph.downloadUrl']||'';
+ if(!downloadUrl){const url=new URL(endpoint);url.searchParams.set('$select','id,@microsoft.graph.downloadUrl');const fallback=await read(url);downloadUrl=fallback.data['@microsoft.graph.downloadUrl']||'';tag=tag||fallback.data.eTag||fallback.data.cTag||fallback.tag||''}
+ if(!tag){const url=new URL(endpoint);url.searchParams.set('$select','id,eTag,cTag');try{const fallback=await read(url);tag=fallback.data.eTag||fallback.data.etag||fallback.data.cTag||fallback.data['@odata.etag']||fallback.tag||''}catch(err){console.warn('OneDrive liefert keine optionale Dateiversion.',err)}}
+ if(!downloadUrl)throw Error('OneDrive liefert keinen Download-Link für die aktuelle Excel-Datei. Bitte Freigabe und Microsoft-Anmeldung prüfen. Änderungen bleiben lokal gesichert.');
+ return {endpoint,tag,downloadUrl};
+}
 async function saveToOneDrive(localChanges,item,allowPopup=true){
  if(!item?.id)throw Error('Die OneDrive-Datei wurde nicht ausgewählt.');
  const token=await getAccessToken(allowPopup),account=getSignedInAccount();
  if(item.accountId&&account?.homeAccountId!==item.accountId)throw Error('Bitte mit dem Microsoft-Konto anmelden, mit dem diese Liste geladen wurde. Änderungen bleiben lokal gesichert.');
  const endpoint=item.driveId?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(item.driveId)}/items/${encodeURIComponent(item.id)}`:`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(item.id)}`;
  for(let attempt=0;attempt<3;attempt++){
-  const metadataUrl=new URL(endpoint);metadataUrl.searchParams.set('$select','id,eTag,@microsoft.graph.downloadUrl');
-  const metadataResponse=await fetch(metadataUrl,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
-  if(!metadataResponse.ok)throw Error('Die aktuelle OneDrive-Datei konnte nicht geladen werden ('+metadataResponse.status+'). Änderungen bleiben lokal gesichert.');
-  const metadata=await metadataResponse.json(),downloadUrl=metadata['@microsoft.graph.downloadUrl'];
-  if(!metadata.eTag||!downloadUrl)throw Error('OneDrive hat die aktuelle Datei nicht vollständig bereitgestellt. Änderungen bleiben lokal gesichert.');
-  const download=await fetch(downloadUrl,{cache:'no-store'});if(!download.ok)throw Error('Die aktuelle Excel-Datei konnte nicht heruntergeladen werden. Änderungen bleiben lokal gesichert.');
+  const current=await currentOneDriveFile(endpoint,token);
+  const download=await fetch(current.downloadUrl,{cache:'no-store'});if(!download.ok)throw Error('Die aktuelle Excel-Datei konnte nicht heruntergeladen werden. Änderungen bleiben lokal gesichert.');
   const remoteZip=await JSZip.loadAsync(await download.arrayBuffer()),blob=await mergeLocalChanges(remoteZip,localChanges);
-  const session=await fetch(endpoint+'/createUploadSession',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','If-Match':metadata.eTag},body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
+  const uploadHeaders={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};if(current.tag)uploadHeaders['If-Match']=current.tag;
+  const session=await fetch(current.endpoint+'/createUploadSession',{method:'POST',headers:uploadHeaders,body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
   if(session.status===412)continue;
   if(!session.ok)throw Error('OneDrive kann die Datei momentan nicht aktualisieren ('+session.status+'). Änderungen bleiben lokal gesichert. Bitte erneut synchronisieren.');
   const {uploadUrl}=await session.json();if(!uploadUrl)throw Error('OneDrive hat keinen Upload bereitgestellt.');
@@ -305,7 +314,7 @@ async function saveToOneDrive(localChanges,item,allowPopup=true){
    const end=Math.min(offset+chunkSize,blob.size),response=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Type':'application/octet-stream','Content-Range':`bytes ${offset}-${end-1}/${blob.size}`},body:blob.slice(offset,end)});
    if(response.status===412){retry=true;break}
    if(!response.ok)throw Error('OneDrive-Upload unterbrochen ('+response.status+'). Änderungen bleiben lokal gesichert.');
-   const result=await response.json();if(end===blob.size){if(response.status===202||!result.eTag)throw Error('OneDrive hat die Speicherung noch nicht bestätigt. Änderungen bleiben lokal gesichert.');return result}
+   const result=await response.json();if(end===blob.size){if(response.status!==200&&response.status!==201)throw Error('OneDrive hat die Speicherung noch nicht bestätigt. Änderungen bleiben lokal gesichert.');return result}
    if(response.status!==202)throw Error('OneDrive hat einen unerwarteten Upload-Status gemeldet.');
   }
   if(!retry)throw Error('Die Excel-Datei ist leer.');
