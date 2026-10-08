@@ -175,7 +175,7 @@ function nextAppointmentSummary(items,now=new Date()){
 function updateAppointmentFilterButton(){
  const button=document.getElementById('nextAppointments'),hasAppointments=nextAppointmentDay(records)!==null;
  if(!hasAppointments)appointmentFilterActive=false;
- button.textContent=nextAppointmentSummary(records);button.disabled=!hasAppointments;
+ button.textContent=appointmentFilterActive?'Termine ausblenden':nextAppointmentSummary(records);button.disabled=!hasAppointments;
  button.setAttribute('aria-pressed',String(appointmentFilterActive));
  button.title=appointmentFilterActive?'Terminfilter aufheben und alle Objekte anzeigen':'Objekte mit Terminen an diesem Tag anzeigen';
 }
