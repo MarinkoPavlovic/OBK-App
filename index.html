@@ -220,7 +220,7 @@ return await sourceZip.generateAsync({type:'blob',mimeType:'application/vnd.open
 async function performSaveWorkbook({automatic=false}={}){
 if(!sourceZip||!sourceSheetPath){if(!automatic)toast('Bitte zuerst die Excel-Datei öffnen.');return}
 let invalidWe=records.find(r=>!/^[0-9]+$/.test(String(r.we)));if(invalidWe){if(!automatic){if(invalidWe.id===selected)document.getElementById('weInput')?.focus();toast('Bitte bei jedem Objekt eine ganze Zahl für Wohneinheiten eintragen.')}return}
-if(!automatic){let currentRecord=records.find(r=>r.id===selected),pending=String(currentRecord?.pendingNote||'').trim();if(pending){currentRecord.notizen=[shortDate()+': '+pending,String(currentRecord.notizen||'').trim()].filter(Boolean).join('\n');currentRecord.pendingNote='';markDirty(currentRecord);persist()}}
+if(!automatic){let currentRecord=records.find(r=>r.id===selected),pending=String(currentRecord?.pendingNote||'').trim();if(pending){currentRecord.notizen=[shortDate()+': '+pending,String(currentRecord.notizen||'').trim()].filter(Boolean).join('\n');currentRecord.pendingNote='';markDirty(currentRecord);persist();const detailScroll=document.getElementById('detail').scrollTop;renderList();renderDetail();document.getElementById('detail').scrollTop=detailScroll}}
 if(!dirtyAdsIds.size){if(!automatic)toast('Keine Änderungen zu speichern.');return}
 await persist();
 if(sourceOneDriveItem&&navigator.onLine===false){syncError='';updateSyncStatus();return}
