@@ -1,13 +1,15 @@
-const CACHE_NAME = 'objektermittlungs-app-v1.2.12';
+const CACHE_NAME = 'objektermittlungs-app-v1.2.14';
 const APP_FILES = [
   './',
   './index.html',
   './manifest.json',
   './config.js',
-  './icons/app-192.png',
-  './icons/app-512.png',
-  './icons/app-maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/app-v2-192.png',
+  './icons/app-v2-512.png',
+  './icons/app-v2-maskable-512.png',
+  './icons/apple-touch-icon-v2.png',
+  './icons/favicon-v2-32.png',
+  './icons/favicon-v2.ico'
 ];
 
 self.addEventListener('install', event => {
