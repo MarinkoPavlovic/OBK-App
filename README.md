@@ -36,3 +36,26 @@ Beim Excel-Import wird das passende Datenblatt anhand seiner Spaltenüberschrift
 ## Microsoft-Einrichtung
 
 Die Microsoft-App-Registrierung wird pro bereitgestellter Web-App einmal vorgenommen, nicht von jedem Nutzer. Details und die aktuelle Anleitung stehen in der [Microsoft-Dokumentation für Single-Page-Apps](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-spa-app-configuration).
+
+
+## Lokale Kopie und Offline-Arbeit
+
+Nach dem Laden aus OneDrive speichert die App eine lokale Kopie der Excel-Datei und sichert Bearbeitungen laufend im Browser auf diesem Gerät. Beim Start bleibt die Oberfläche ohne geöffnete Liste. Noch nicht synchronisierte Änderungen werden aus der lokalen Sicherung im Hintergrund nach OneDrive übertragen. Die gewünschte Liste wählt der Nutzer selbst aus. Über „Lokale Liste öffnen“ lässt sie sich nach dem Schließen erneut öffnen.
+
+Die Anzeige über der Liste informiert über lokale Sicherung, Offline-Zustand und ausstehende Synchronisierung. Bei Internetverbindung werden Änderungen automatisch synchronisiert, auch nach Rückkehr der Verbindung und beim nächsten Start. Falls Microsoft eine erneute Anmeldung verlangt, über „Microsoft Login“ anmelden; die lokale Sicherung bleibt erhalten.
+
+„Liste schließen“ versucht zuerst zu synchronisieren. Bei Offline-Betrieb oder einem Speicherfehler bleibt die Liste geöffnet und ein Infofenster erklärt den nächsten Schritt. Das vollständige Schließen von Safari oder das Beenden der App durch iPadOS kann keinen zuverlässigen Upload oder Dialog garantieren. Deshalb werden Änderungen bereits während der Eingabe lokal gesichert und beim nächsten Start erneut zur Synchronisierung bereitgestellt.
+
+Vor jedem Abgleich lädt die App die aktuelle OneDrive-Datei und überträgt ausschließlich die lokal bearbeiteten Objekte anhand ihrer ADS-ID. Bei diesen Objekten haben die lokal gespeicherten Eingabefelder Vorrang; andere Objekte und andere Tabellenblätter bleiben erhalten. Bei einer erneuten Versionsänderung während des Abgleichs wird die aktuelle Datei erneut geladen (bis zu drei Versuche). Fehlende ADS-IDs sowie geänderte Datenblattstrukturen stoppen den Abgleich; die lokalen Änderungen bleiben gesichert.
+
+Die lokale Sicherung gehört zu diesem Browser und dieser Webadresse. Beim Löschen der Website-Daten kann sie verloren gehen. Nach dem ersten Laden muss die App einmal online über ihre HTTPS-Adresse geöffnet worden sein, damit die Offline-Dateien bereitstehen. Pro Browser wird die zuletzt geladene Liste lokal bereitgehalten.
+
+Beim Abgleich werden Download-Link und Dateiversion bei Bedarf getrennt abgefragt. Freigabeverweise werden auf die tatsächliche Datei aufgelöst. Wenn OneDrive eTag, cTag oder einen ETag-Header liefert, wird diese Version beim Upload geprüft. Liefert OneDrive keine Versionskennung, erfolgt der Upload auf Basis der gerade heruntergeladenen Datei ohne diese zusätzliche Versionsbedingung; zeitgleiche Änderungen während dieses kurzen Abgleichs können dann nicht zuverlässig erkannt werden.
+
+Mehrfach vorhandene ADS-IDs werden gemeinsam synchronisiert: Der zuletzt lokal bearbeitete Stand einer ADS-ID wird in alle passenden Zeilen der OneDrive-Datei geschrieben und nach erfolgreicher Speicherung auch in den lokalen Einträgen übernommen.
+
+Die Synchronisierung ordnet die lokale Liste anhand ihres beim Laden gespeicherten Dateinamens im ursprünglichen OneDrive-Ordner zu. Vor jedem Upload wird die dort aktuell vorhandene Datei dieses Namens ermittelt; eine neu hochgeladene Datei gleichen Namens wird dadurch ebenfalls berücksichtigt. Gleichnamige Dateien in anderen Ordnern werden nicht verwendet. Fehlt die Datei oder wurde sie umbenannt, bleiben die Änderungen lokal gesichert. Ältere lokale Sicherungen werden über ihren gespeicherten Ordnerpfad weiter zugeordnet; fehlt auch dieser, wird der Ordner einmal über die bisherige Datei ermittelt. Ist diese bereits gelöscht, muss die Liste erneut ausgewählt werden.
+
+Beim Wechsel zu einer anderen Potenzialliste bleiben ausstehende Änderungen früherer Listen in einer getrennten lokalen Warteschlange erhalten. Der Hintergrundabgleich verändert die aktuell angezeigte Liste nicht. Über „Lokale Liste öffnen“ kann die zuletzt zwischengespeicherte Liste ausdrücklich geöffnet werden.
+
+Änderungen werden weiterhin sofort lokal gesichert. Die automatische OneDrive-Speicherung bündelt Änderungen während der Nutzung in einem stündlichen Rhythmus, gerechnet ab der ersten noch nicht synchronisierten Änderung; weitere Eingaben verschieben diesen Zeitpunkt nicht. „Eintrag speichern“ übernimmt die Notiz sofort in die eigenen Notizen und sichert lokal. „Liste schließen“, die Rückkehr der Internetverbindung sowie der nächste App-Start synchronisieren ausstehende Änderungen sofort. Ein einfacher Wechsel in einen anderen Browser-Tab löst keinen zusätzlichen Upload aus. Bei pausierter oder geschlossener App kann der Browser keine pünktliche stündliche Ausführung garantieren.
