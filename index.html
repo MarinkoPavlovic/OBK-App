@@ -515,7 +515,7 @@ async function chooseOneDriveFile(items,token,heading='Excel-Datei auswählen'){
   render();cancel.focus();
  });
 }const oneDriveFolderLinkStorageKey='objektermittlungs.sharedFolderLink.v1';
-let activeOneDriveFolderLink='',oneDriveOpenInProgress=false;
+let activeOneDriveFolderLink='',oneDriveOpenInProgress=false,validatedOneDriveFolderLink='',validatedFolderAccountId='';
 function readSavedOneDriveFolderLink(){if(activeOneDriveFolderLink)return activeOneDriveFolderLink;try{const stored=localStorage.getItem(oneDriveFolderLinkStorageKey);if(stored)activeOneDriveFolderLink=stored}catch{}return activeOneDriveFolderLink}
 function openFolderLinkDatabase(){return new Promise((resolve,reject)=>{
  if(!('indexedDB'in window)){reject(Error('Lokaler Browserspeicher ist nicht verfügbar.'));return}
@@ -542,7 +542,8 @@ async function saveOneDriveFolderLink(link){
  updateFolderLinkButton();if(!saved)toast('Der Browser konnte den Ordnerlink nicht speichern. Bitte die Speichereinstellungen prüfen.');return saved;
 }
 function updateFolderLinkButton(){const button=document.getElementById('folderLinkBtn');if(button)button.textContent='OneDrive-Ordner';updateOneDriveOpenButton()}
-function updateOneDriveOpenButton(){const button=document.getElementById('oneDriveOpenBtn');if(button){button.disabled=oneDriveOpenInProgress||!!(sourceZip&&sourceSheetPath)||!(getSignedInAccount()&&readSavedOneDriveFolderLink());button.setAttribute('aria-busy',String(oneDriveOpenInProgress))}}
+function updateFolderLinkVisibility(){const button=document.getElementById('folderLinkBtn');if(!button)return;const link=readSavedOneDriveFolderLink(),account=getSignedInAccount();button.hidden=!!(sourceZip&&sourceSheetPath&&sourceOneDriveItem&&link&&validatedOneDriveFolderLink===link&&account&&validatedFolderAccountId===account.homeAccountId)}
+function updateOneDriveOpenButton(){const button=document.getElementById('oneDriveOpenBtn');if(button){button.disabled=oneDriveOpenInProgress||!!(sourceZip&&sourceSheetPath)||!(getSignedInAccount()&&readSavedOneDriveFolderLink());button.setAttribute('aria-busy',String(oneDriveOpenInProgress))}updateFolderLinkVisibility()}
 function requestOneDriveFolderLink(initialValue=''){
  return new Promise(resolve=>{
   const overlay=document.createElement('div');overlay.className='folder-link-overlay';
@@ -577,7 +578,7 @@ async function openOneDriveExcel(){
 async function loadOneDriveExcelFromLink(sharedLink){
  try{
   const token=await getAccessToken();let item=await resolveSharedLink(sharedLink,token),folderLinkResolved=false;
-  if(item.kind==='folder'){const folderItems=await listOneDriveFolder(item,token);folderLinkResolved=true;await saveOneDriveFolderLink(sharedLink);if(!folderItems.some(entry=>entry.kind==='file')){toast('Im freigegebenen Ordner wurden keine Excel-Dateien gefunden.');return true}item=await chooseOneDriveFile(folderItems,token,'Excel-Datei im freigegebenen Ordner auswählen');if(!item)return true}
+  if(item.kind==='folder'){const folderItems=await listOneDriveFolder(item,token);folderLinkResolved=true;await saveOneDriveFolderLink(sharedLink);validatedOneDriveFolderLink=sharedLink;validatedFolderAccountId=getSignedInAccount()?.homeAccountId||'';if(!folderItems.some(entry=>entry.kind==='file')){toast('Im freigegebenen Ordner wurden keine Excel-Dateien gefunden.');return true}item=await chooseOneDriveFile(folderItems,token,'Excel-Datei im freigegebenen Ordner auswählen');if(!item)return true}
   const itemUrl=item.driveId
    ?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(item.driveId)}/items/${encodeURIComponent(item.id)}`
    :`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(item.id)}`;
@@ -592,7 +593,7 @@ async function loadOneDriveExcelFromLink(sharedLink){
   const blob=await download.blob();Object.defineProperty(blob,'name',{value:meta.name||item.name});
   const parent=meta.parentReference||{};
   const imported=await loadExcel(blob,null,false,{id:meta.id||item.id,driveId:parent.driveId||item.driveId,name:meta.name||item.name,path:parent.path||item.path||'',parentId:parent.id||item.parentId||'',eTag:meta.eTag||'',accountId:getSignedInAccount()?.homeAccountId||''});return imported||folderLinkResolved;
- }catch(err){toast('OneDrive-Datei konnte nicht geöffnet werden: '+(err.message||'Bitte erneut versuchen.'));return false}
+ }catch(err){validatedOneDriveFolderLink='';validatedFolderAccountId='';updateFolderLinkVisibility();toast('OneDrive-Datei konnte nicht geöffnet werden: '+(err.message||'Bitte erneut versuchen.'));return false}
 }async function closeApp(){
  resetAutoSaveSchedule();
  await persist();
