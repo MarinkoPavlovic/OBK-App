@@ -290,25 +290,41 @@ async function mergeLocalChanges(remoteZip,localChanges){
  let workbookXml=await remoteZip.file('xl/workbook.xml').async('string');if(/<calcPr[^>]*\/>/.test(workbookXml))workbookXml=workbookXml.replace(/<calcPr([^>]*)\/>/,(m,a)=>'<calcPr'+a.replace(/\s(?:fullCalcOnLoad|forceFullCalc)="[^"]*"/g,'')+' fullCalcOnLoad="1" forceFullCalc="1"/>');else workbookXml=workbookXml.replace('</workbook>','<calcPr calcId="191028" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>');remoteZip.file('xl/workbook.xml',workbookXml);
  return await remoteZip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
+async function oneDriveFilenameEndpoint(item,token){
+ const name=String(item.name||'').trim();
+ if(!name||/[\\/]/.test(name))throw Error('Der Dateiname der lokalen Liste fehlt oder ist ungültig. Bitte die Potenzialliste erneut aus OneDrive laden. Änderungen bleiben lokal gesichert.');
+ const driveBase=item.driveId?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(item.driveId)}`:'https://graph.microsoft.com/v1.0/me/drive';
+ if(item.parentId)return `${driveBase}/items/${encodeURIComponent(item.parentId)}:/${encodeURIComponent(name)}`;
+ const parentPath=String(item.path||''),rootAt=parentPath.indexOf('root:');
+ if(rootAt>=0){const folder=parentPath.slice(rootAt+5).replace(/^\/+|\/+$/g,'');const path=[...folder.split('/').filter(Boolean),name].map(part=>encodeURIComponent(part)).join('/');return `${driveBase}/root:/${path}`}
+ // Older local copies may only contain the file ID; use it to discover the folder once.
+ if(item.id){
+  const response=await fetch(`${driveBase}/items/${encodeURIComponent(item.id)}?$select=parentReference`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+  if(response.ok){const metadata=await response.json(),parent=metadata.parentReference||{};if(parent.id||String(parent.path||'').includes('root:'))return oneDriveFilenameEndpoint({...item,driveId:parent.driveId||item.driveId,parentId:parent.id||'',path:parent.path||''},token)}
+ }
+ throw Error('Der ursprüngliche OneDrive-Ordner konnte nicht ermittelt werden. Bitte die Potenzialliste erneut aus diesem Ordner laden. Änderungen bleiben lokal gesichert.');
+}
 async function currentOneDriveFile(endpoint,token){
  const headers={Authorization:`Bearer ${token}`};
- const read=async(url)=>{const response=await fetch(url,{headers,cache:'no-store'});if(!response.ok)throw Error('Die aktuelle OneDrive-Datei konnte nicht geladen werden ('+response.status+'). Änderungen bleiben lokal gesichert.');return {data:await response.json(),tag:response.headers?.get('ETag')||''}};
+ const read=async(url)=>{const response=await fetch(url,{headers,cache:'no-store'});if(!response.ok)throw Error(response.status===404?'Die Potenzialliste mit dem gespeicherten Dateinamen wurde im ursprünglichen OneDrive-Ordner nicht gefunden. Änderungen bleiben lokal gesichert.':'Die aktuelle OneDrive-Datei konnte nicht geladen werden ('+response.status+'). Änderungen bleiben lokal gesichert.');return {data:await response.json(),tag:response.headers?.get('ETag')||''}};
  let result=await read(endpoint),metadata=result.data;
  // A shared shortcut can refer to the actual file in another drive.
  if(metadata.remoteItem?.id&&metadata.remoteItem.parentReference?.driveId){const remote=metadata.remoteItem;endpoint=`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(remote.parentReference.driveId)}/items/${encodeURIComponent(remote.id)}`;result=await read(endpoint);metadata=result.data}
+ // Resolve the current file ID only after finding it by name in the original folder.
+ if(metadata.id){const driveId=metadata.parentReference?.driveId,base=driveId?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}`:endpoint.split('/items/')[0].split('/root:')[0];endpoint=`${base}/items/${encodeURIComponent(metadata.id)}`}
+ else if(endpoint.includes('/root:')||/\/items\/[^/]+:\//.test(endpoint))throw Error('OneDrive hat die gefundene Datei nicht eindeutig bereitgestellt. Änderungen bleiben lokal gesichert.');
  let tag=metadata.eTag||metadata.etag||metadata.cTag||metadata['@odata.etag']||result.tag||'',downloadUrl=metadata['@microsoft.graph.downloadUrl']||'';
  if(!downloadUrl){const url=new URL(endpoint);url.searchParams.set('$select','id,@microsoft.graph.downloadUrl');const fallback=await read(url);downloadUrl=fallback.data['@microsoft.graph.downloadUrl']||'';tag=tag||fallback.data.eTag||fallback.data.cTag||fallback.tag||''}
  if(!tag){const url=new URL(endpoint);url.searchParams.set('$select','id,eTag,cTag');try{const fallback=await read(url);tag=fallback.data.eTag||fallback.data.etag||fallback.data.cTag||fallback.data['@odata.etag']||fallback.tag||''}catch(err){console.warn('OneDrive liefert keine optionale Dateiversion.',err)}}
  if(!downloadUrl)throw Error('OneDrive liefert keinen Download-Link für die aktuelle Excel-Datei. Bitte Freigabe und Microsoft-Anmeldung prüfen. Änderungen bleiben lokal gesichert.');
- return {endpoint,tag,downloadUrl};
+ return {endpoint,tag,downloadUrl,metadata};
 }
 async function saveToOneDrive(localChanges,item,allowPopup=true){
  if(!item?.id)throw Error('Die OneDrive-Datei wurde nicht ausgewählt.');
  const token=await getAccessToken(allowPopup),account=getSignedInAccount();
  if(item.accountId&&account?.homeAccountId!==item.accountId)throw Error('Bitte mit dem Microsoft-Konto anmelden, mit dem diese Liste geladen wurde. Änderungen bleiben lokal gesichert.');
- const endpoint=item.driveId?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(item.driveId)}/items/${encodeURIComponent(item.id)}`:`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(item.id)}`;
  for(let attempt=0;attempt<3;attempt++){
-  const current=await currentOneDriveFile(endpoint,token);
+  const endpoint=await oneDriveFilenameEndpoint(item,token),current=await currentOneDriveFile(endpoint,token);
   const download=await fetch(current.downloadUrl,{cache:'no-store'});if(!download.ok)throw Error('Die aktuelle Excel-Datei konnte nicht heruntergeladen werden. Änderungen bleiben lokal gesichert.');
   const remoteZip=await JSZip.loadAsync(await download.arrayBuffer()),blob=await mergeLocalChanges(remoteZip,localChanges);
   const uploadHeaders={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};if(current.tag)uploadHeaders['If-Match']=current.tag;
@@ -321,7 +337,7 @@ async function saveToOneDrive(localChanges,item,allowPopup=true){
    const end=Math.min(offset+chunkSize,blob.size),response=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Type':'application/octet-stream','Content-Range':`bytes ${offset}-${end-1}/${blob.size}`},body:blob.slice(offset,end)});
    if(response.status===412){retry=true;break}
    if(!response.ok)throw Error('OneDrive-Upload unterbrochen ('+response.status+'). Änderungen bleiben lokal gesichert.');
-   const result=await response.json();if(end===blob.size){if(response.status!==200&&response.status!==201)throw Error('OneDrive hat die Speicherung noch nicht bestätigt. Änderungen bleiben lokal gesichert.');return result}
+   const result=await response.json();if(end===blob.size){if(response.status!==200&&response.status!==201)throw Error('OneDrive hat die Speicherung noch nicht bestätigt. Änderungen bleiben lokal gesichert.');const parent=current.metadata.parentReference||{};item.id=current.metadata.id||item.id;item.driveId=parent.driveId||item.driveId;item.parentId=parent.id||item.parentId;item.path=parent.path||item.path;return result}
    if(response.status!==202)throw Error('OneDrive hat einen unerwarteten Upload-Status gemeldet.');
   }
   if(!retry)throw Error('Die Excel-Datei ist leer.');
@@ -332,7 +348,7 @@ function normalizeOneDriveSearchItem(result){
  const remote=result.remoteItem||null,item=remote||result,parent=item.parentReference||result.parentReference||{};
  const isFolder=!!(item.folder||result.folder),isExcel=!!(item.file||result.file)&&String(item.name||result.name||'').toLowerCase().endsWith('.xlsx');
  if(!isFolder&&!isExcel)return null;
- return{id:item.id||result.id,driveId:parent.driveId||null,name:item.name||result.name||'',path:parent.path||'',kind:isFolder?'folder':'file'};
+ return{id:item.id||result.id,driveId:parent.driveId||null,name:item.name||result.name||'',path:parent.path||'',parentId:parent.id||'',kind:isFolder?'folder':'file'};
 }
 async function listOneDriveFolder(folder,token){
  const base=folder.driveId?`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(folder.driveId)}/items/${encodeURIComponent(folder.id)}/children`:`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(folder.id)}/children`;
@@ -454,7 +470,7 @@ async function loadOneDriveExcelFromLink(sharedLink){
   if(!download.ok)throw Error('Die Excel-Datei konnte nicht heruntergeladen werden.');
   const blob=await download.blob();Object.defineProperty(blob,'name',{value:meta.name||item.name});
   const parent=meta.parentReference||{};
-  const imported=await loadExcel(blob,null,false,{id:meta.id||item.id,driveId:parent.driveId||item.driveId,name:meta.name||item.name,path:parent.path||item.path||'',eTag:meta.eTag||'',accountId:getSignedInAccount()?.homeAccountId||''});return imported||folderLinkResolved;
+  const imported=await loadExcel(blob,null,false,{id:meta.id||item.id,driveId:parent.driveId||item.driveId,name:meta.name||item.name,path:parent.path||item.path||'',parentId:parent.id||item.parentId||'',eTag:meta.eTag||'',accountId:getSignedInAccount()?.homeAccountId||''});return imported||folderLinkResolved;
  }catch(err){toast('OneDrive-Datei konnte nicht geöffnet werden: '+(err.message||'Bitte erneut versuchen.'));return false}
 }async function closeApp(){
  clearTimeout(autoSaveTimer);
