@@ -482,6 +482,14 @@ async function currentOneDriveFile(endpoint,token){
  if(!downloadUrl)throw Error('OneDrive liefert keinen Download-Link für die aktuelle Excel-Datei. Bitte Freigabe und Microsoft-Anmeldung prüfen. Änderungen bleiben lokal gesichert.');
  return {endpoint,tag,downloadUrl,metadata};
 }
+async function oneDriveUploadError(response,stage){
+ let payload=null,raw='';
+ try{payload=await response.clone().json()}catch{try{raw=(await response.clone().text()).trim()}catch{}}
+ const error=payload?.error||{},code=error.code||'',message=error.message||raw,inner=error.innerError||error.innererror||{};
+ const requestId=response.headers?.get('request-id')||response.headers?.get('client-request-id')||inner['request-id']||inner.requestId||'';
+ const status=response.status===423?'Datei ist gesperrt (423)':`HTTP ${response.status}`;
+ return `OneDrive konnte die Datei beim ${stage} nicht aktualisieren (${status}${code?`, ${code}`:''}).${message?` ${message}`:''}${requestId?` Anfrage-ID: ${requestId}.`:''} Änderungen bleiben lokal gesichert.`
+}
 async function saveToOneDrive(localChanges,item,allowPopup=true,sheetPath=sourceSheetPath){
  if(!item?.id)throw Error('Die OneDrive-Datei wurde nicht ausgewählt.');
  const token=await getAccessToken(allowPopup),account=getSignedInAccount();
@@ -493,13 +501,13 @@ async function saveToOneDrive(localChanges,item,allowPopup=true,sheetPath=source
   const uploadHeaders={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};if(current.tag)uploadHeaders['If-Match']=current.tag;
   const session=await fetch(current.endpoint+'/createUploadSession',{method:'POST',headers:uploadHeaders,body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
   if(session.status===412)continue;
-  if(!session.ok)throw Error('OneDrive kann die Datei momentan nicht aktualisieren ('+session.status+'). Änderungen bleiben lokal gesichert. Bitte erneut synchronisieren.');
+  if(!session.ok)throw Error(await oneDriveUploadError(session,'Starten des Uploads'));
   const {uploadUrl}=await session.json();if(!uploadUrl)throw Error('OneDrive hat keinen Upload bereitgestellt.');
   const chunkSize=5*1024*1024;let retry=false;
   for(let offset=0;offset<blob.size;offset+=chunkSize){
    const end=Math.min(offset+chunkSize,blob.size),response=await fetch(uploadUrl,{method:'PUT',headers:{'Content-Type':'application/octet-stream','Content-Range':`bytes ${offset}-${end-1}/${blob.size}`},body:blob.slice(offset,end)});
    if(response.status===412){retry=true;break}
-   if(!response.ok)throw Error('OneDrive-Upload unterbrochen ('+response.status+'). Änderungen bleiben lokal gesichert.');
+   if(!response.ok)throw Error(await oneDriveUploadError(response,'Übertragen der Datei'));
    const result=await response.json();if(end===blob.size){if(response.status!==200&&response.status!==201)throw Error('OneDrive hat die Speicherung noch nicht bestätigt. Änderungen bleiben lokal gesichert.');const parent=current.metadata.parentReference||{};item.id=current.metadata.id||item.id;item.driveId=parent.driveId||item.driveId;item.parentId=parent.id||item.parentId;item.path=parent.path||item.path;return result}
    if(response.status!==202)throw Error('OneDrive hat einen unerwarteten Upload-Status gemeldet.');
   }
