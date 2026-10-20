@@ -501,7 +501,7 @@ async function saveToOneDrive(localChanges,item,allowPopup=true,sheetPath=source
   const uploadHeaders={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};if(current.tag)uploadHeaders['If-Match']=current.tag;
   const session=await fetch(current.endpoint+'/createUploadSession',{method:'POST',headers:uploadHeaders,body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
   if(session.status===412)continue;
-  if(!session.ok)throw Error(await oneDriveUploadError(session,'Starten des Uploads'));
+  if(!session.ok){if(session.status===409&&attempt<2){await new Promise(resolve=>setTimeout(resolve,2000*(attempt+1)));continue}throw Error(await oneDriveUploadError(session,'Starten des Uploads'))}
   const {uploadUrl}=await session.json();if(!uploadUrl)throw Error('OneDrive hat keinen Upload bereitgestellt.');
   const chunkSize=5*1024*1024;let retry=false;
   for(let offset=0;offset<blob.size;offset+=chunkSize){
