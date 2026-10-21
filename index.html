@@ -285,7 +285,7 @@ function updateWarningFilterButton(){const button=document.getElementById('progr
 function isWarningStatusOption(value){return ['remark:unterlagen zusenden','remark:unterlagen beim kunden'].includes(String(value).trim().toLowerCase())}
 function isUnidentifiedRecord(record){const identified=['ja','1','x','true','✓'].includes(String(record.etErmittelt||'').trim().toLowerCase());return !identified&&!String(record.bemerkung||'').trim()}
 function isOpenOwnerOnSite(record){const remark=String(record.bemerkung||'').trim(),status=remark.toLowerCase().replace(/[-–—]/g,' ').replace(/[.,;:!?()]/g,' ').replace(/\s+/g,' ');return ownerLivesInObject(record.etWohnt)&&(!remark||['unterlagen beim kunden','unterlagen zusenden','termin mit kunden'].includes(status))}
-function isOpenHVRecord(record){const status=String(record.bemerkung||'').trim().toLowerCase().replace(/[-–—]/g,' ').replace(/[.,;:!?()]/g,' ').replace(/\s+/g,' ');return ['unterlagen beim kunden','unterlagen zusenden'].includes(status)&&!ownerLivesInObject(record.etWohnt)}
+function isOpenHVRecord(record){const status=String(record.bemerkung||'').trim().toLowerCase().replace(/[-–—]/g,' ').replace(/[.,;:!?()]/g,' ').replace(/\s+/g,' ');return ['unterlagen beim kunden','unterlagen zusenden','termin mit kunden'].includes(status)&&!ownerLivesInObject(record.etWohnt)}
 function toggleOpenHVFilter(){
  const active=!openHVFilterActive;warningFilterActive=false;todoFilterActive=false;appointmentFilterActive=false;openHVFilterActive=active;contractFilterActive=false;selectedStatuses.clear();
  if(active)for(const id of ['noteFilter','streetFilter','ownerLivesFilter'])document.getElementById(id).value='';
