@@ -56,6 +56,9 @@ function localSetting(key,value,write=false){return openFolderLinkDatabase().the
  transaction.oncomplete=()=>{database.close();resolve(write?value:request.result)};
  transaction.onerror=transaction.onabort=()=>{database.close();reject(transaction.error||Error('Lokale Sicherung fehlgeschlagen.'))};
 }))}
+function syncFailureMessage(offline=navigator.onLine===false){
+ return offline?'Synchronisation mit dem Server nicht möglich. App ist offline, bitte Internetverbindung herstellen.':'Synchronisation mit dem Server nicht möglich. Daten bleiben lokal gespeichert und werden beim nächsten Start der App synchronisiert.'
+}
 function updateSyncStatus(){
  const localOpen=document.getElementById('localOpenBtn');if(localOpen)localOpen.hidden=!!sourceZip||!localBaseId;
  const banner=document.getElementById('syncBanner');if(!banner)return;
@@ -63,7 +66,7 @@ function updateSyncStatus(){
  const offline=navigator.onLine===false;
  banner.classList.toggle('sync-offline',offline);
  banner.classList.toggle('sync-error',!!localSaveError||(!offline&&!!(syncError||backgroundSyncError)));
- document.getElementById('syncMessage').textContent=localSaveError?'Lokale Sicherung fehlgeschlagen. Bitte diese Liste geöffnet lassen und Speicherplatz prüfen.':offline?'Offline. Bitte Internetverbindung herstellen.':(syncError||backgroundSyncError)?(syncError||backgroundSyncError):'Internetverbindung aktiv.';
+ document.getElementById('syncMessage').textContent=localSaveError?'Lokale Sicherung fehlgeschlagen. Bitte diese Liste geöffnet lassen und Speicherplatz prüfen.':offline?syncFailureMessage(true):(syncError||backgroundSyncError)?syncFailureMessage(false):'Internetverbindung aktiv.';
 }
 function persist(){
  if(restoringOffline||!sourceOneDriveItem||!localBaseId)return Promise.resolve();
@@ -398,7 +401,7 @@ if(sourceOneDriveItem){const saved=await saveToOneDrive(changedRecords,sourceOne
 const blob=await createWorkbookBlob(changedRecords,true);
 if(sourceFileHandle&&sourceFileHandle.createWritable){try{if(!sourceWriteAllowed&&!automatic&&sourceFileHandle.requestPermission){sourceWriteAllowed=await sourceFileHandle.requestPermission({mode:'readwrite'})==='granted'}if(automatic&&!sourceWriteAllowed){persist();return}if(!sourceWriteAllowed)throw Error('Schreibzugriff wurde nicht erteilt.');let stream=await sourceFileHandle.createWritable();await stream.write(blob);await stream.close();sourceWriteAllowed=true;dirtyAdsIds.clear();persist();if(automatic){let hint=document.getElementById('saveHint');if(hint)hint.textContent='Automatisch in Excel gespeichert.';renderList();return}renderList();renderDetail();toast('Änderungen direkt in der Excel-Datei gespeichert');return}catch(err){console.warn(err);if(automatic){persist();let hint=document.getElementById('saveHint');if(hint)hint.textContent='Speichern in der Originaldatei fehlgeschlagen.';return}else{throw err}}}
 if(automatic){persist();let hint=document.getElementById('saveHint');if(hint)hint.textContent='Der Browser kann nicht automatisch in die Originaldatei speichern.';return}throw Error(isIPadOS()?'Safari auf iPad kann diese ausgewählte Datei nicht direkt überschreiben. Nutze eine OneDrive-Anmeldung oder eine iOS-App mit Dokumentzugriff.':'Der Browser kann diese Datei nicht überschreiben. Öffne sie über „Excel-Datei öffnen“ und erteile Schreibzugriff.')
-}catch(err){syncError=err.message||'OneDrive ist nicht erreichbar. Änderungen bleiben lokal gesichert.';await persist();updateSyncStatus();if(automatic){console.warn(err);return}toast('Speichern fehlgeschlagen: '+syncError)}}
+}catch(err){syncError=err.message||'OneDrive ist nicht erreichbar. Änderungen bleiben lokal gesichert.';await persist();updateSyncStatus();if(automatic){console.warn(err);return}console.warn('Synchronisierung fehlgeschlagen:',err);toast(syncFailureMessage())}}
 window.addEventListener('pagehide',()=>{void persist()});
 window.addEventListener('beforeunload',event=>{if(dirtyAdsIds.size){void persist();event.preventDefault();event.returnValue=''}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){void persist()}else{updateSyncStatus();if((sourceOneDriveItem&&dirtyAdsIds.size)||pendingWorkbooks.length)void reconnectAndSync({force:false})}});
@@ -501,7 +504,7 @@ async function saveToOneDrive(localChanges,item,allowPopup=true,sheetPath=source
   const uploadHeaders={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};if(current.tag)uploadHeaders['If-Match']=current.tag;
   const session=await fetch(current.endpoint+'/createUploadSession',{method:'POST',headers:uploadHeaders,body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'replace'}})});
   if(session.status===412)continue;
-  if(!session.ok){if(session.status===409&&attempt<2){await new Promise(resolve=>setTimeout(resolve,2000*(attempt+1)));continue}throw Error(await oneDriveUploadError(session,'Starten des Uploads'))}
+  if(!session.ok)throw Error(await oneDriveUploadError(session,'Starten des Uploads'));
   const {uploadUrl}=await session.json();if(!uploadUrl)throw Error('OneDrive hat keinen Upload bereitgestellt.');
   const chunkSize=5*1024*1024;let retry=false;
   for(let offset=0;offset<blob.size;offset+=chunkSize){
@@ -647,7 +650,7 @@ async function loadOneDriveExcelFromLink(sharedLink){
 }async function closeApp(){
  resetAutoSaveSchedule();
  await persist();
- if(dirtyAdsIds.size){await saveWorkbook();if(dirtyAdsIds.size){alert(localSaveError?'Die lokale Sicherung ist fehlgeschlagen. Bitte die App geöffnet lassen, eine Internetverbindung herstellen und den Gerätespeicher prüfen.':navigator.onLine===false?'Du arbeitest gerade offline. Deine Änderungen sind lokal gesichert. Bitte stelle eine Internetverbindung her. Deine Änderungen werden dann automatisch mit OneDrive synchronisiert. Die Liste bleibt geöffnet.':(syncError||'Die Änderungen konnten noch nicht mit OneDrive synchronisiert werden. Bitte Verbindung und Anmeldung prüfen. Die Liste bleibt geöffnet.'));return}}
+ if(dirtyAdsIds.size){await saveWorkbook();if(dirtyAdsIds.size){alert(localSaveError?'Die lokale Sicherung ist fehlgeschlagen. Bitte die App geöffnet lassen, eine Internetverbindung herstellen und den Gerätespeicher prüfen.':syncFailureMessage());return}}
  sourceZip=null;sourceSheetPath=null;sourceFileHandle=null;sourceWriteAllowed=false;sourceOneDriveItem=null;sourceFilename='';records=[];selected=null;warningFilterActive=false;todoFilterActive=false;appointmentFilterActive=false;openHVFilterActive=false;dirtyAdsIds.clear();persist();
  document.getElementById('workbookSummary').textContent='Öffne eine Liste aus dem freigegebenen OneDrive-Ordner';
  renderList();renderDetail();updateOneDriveOpenButton();updateSyncStatus();
