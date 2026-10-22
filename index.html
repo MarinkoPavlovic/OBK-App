@@ -249,7 +249,7 @@ function statusOptions(){
  const menu=document.getElementById('statusFilterMenu'),remarkValues=remarkStatusValues(),options=[['__open__','Noch nicht ermittelt'],['__remarks__','Alle Bemerkungen'],...remarkValues.map(value=>[value,value.slice(7)])],signature=JSON.stringify(options);
  if(menu.dataset.signature!==signature){menu.dataset.signature=signature;menu.innerHTML=options.map(([value,label])=>`<label class="status-option"><input type="checkbox" value="${esc(value)}"><span>${esc(label)}</span></label>`).join('')}
  if(selectedStatuses.has('__remarks__'))for(const value of remarkValues)selectedStatuses.add(value);
- const allRemarksSelected=remarkValues.length>0&&remarkValues.every(value=>selectedStatuses.has(value));
+ const allRemarksSelected=selectedStatuses.has('__open__')&&remarkValues.every(value=>selectedStatuses.has(value));
  if(allRemarksSelected&&!warningFilterActive)selectedStatuses.add('__remarks__');else selectedStatuses.delete('__remarks__');
  menu.querySelectorAll('input[type=checkbox]').forEach(input=>{
   input.checked=selectedStatuses.has(input.value);
@@ -261,8 +261,9 @@ function statusOptions(){
    if(input.value==='__remarks__'){
     selectedStatuses.delete('__remarks__');
     for(const value of remarkValues){if(input.checked)selectedStatuses.add(value);else selectedStatuses.delete(value)}
+    if(input.checked)selectedStatuses.add('__open__');else selectedStatuses.delete('__open__');
    }else{
-    if(input.value.startsWith('remark:'))selectedStatuses.delete('__remarks__');
+    if(input.value==='__open__'||input.value.startsWith('remark:'))selectedStatuses.delete('__remarks__');
     if(input.checked)selectedStatuses.add(input.value);else selectedStatuses.delete(input.value);
    }
    renderList();
@@ -356,7 +357,7 @@ function renderList(){
  const groups=[...groupsByStreet.values()].sort((a,b)=>a.displayLabel.localeCompare(b.displayLabel,'de',{sensitivity:'base'}));
  const showIndividualObjects=contractFilterActive||appointmentFilterActive||warningFilterActive||openHVFilterActive||todoFilterActive;list.innerHTML=showIndividualObjects?(arr.length?arr.map(renderObjectRow).join(''):`<div class="empty">${records.length?'Keine passenden Objekte gefunden.':'Noch keine Potenzialliste geöffnet. Tippe oben auf „Potenzialliste laden“.'}</div>`):groups.length?groups.map(group=>{const expanded=expandedStreetGroups.has(group.key),count=group.records.length,streetWE=group.records.reduce((sum,r)=>sum+(Number.parseInt(r.we,10)||0),0),averageWE=count?streetWE/count:0;return `<section class="street-group"><button class="street-group-toggle" type="button" data-street-group="${esc(group.key)}" aria-expanded="${expanded}"><span class="street-group-name">${esc(group.displayLabel)}${pendingStreetGroups.has(group.key)?'':'<span class="street-group-complete" role="img" aria-label="In dieser Straße ist nichts mehr abzuarbeiten" title="In dieser Straße ist nichts mehr abzuarbeiten">✓</span>'}</span><span class="street-group-summary"><span>${count.toLocaleString('de-DE')} ${count===1?'Objekt':'Objekte'}</span><span class="summary-separator">·</span><span>${streetWE.toLocaleString('de-DE')} WE gesamt</span><span class="summary-separator">·</span><span>Ø ${averageWE.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})}</span></span><svg class="street-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>${expanded?`<div class="street-group-objects">${group.records.map(renderObjectRow).join('')}</div>`:''}</section>`}).join(''):`<div class="empty">${records.length?'Keine passenden Objekte gefunden.':'Noch keine Potenzialliste geöffnet. Tippe oben auf „Potenzialliste laden“.'}</div>`;
  document.querySelectorAll('#objectList .street-group-toggle').forEach(button=>{button.onclick=()=>{const key=button.dataset.streetGroup;if(expandedStreetGroups.has(key))expandedStreetGroups.delete(key);else expandedStreetGroups.add(key);renderList()}});
- document.querySelectorAll('#objectList .object').forEach(el=>{const toggle=()=>{if(selected===el.dataset.id){if(detailOpen){detailOpen=false;selected=null}else detailOpen=true}else{selected=el.dataset.id;detailOpen=true}renderList()};el.onclick=toggle;el.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle()}}});renderDetail();
+ document.querySelectorAll('#objectList .object').forEach(el=>{const toggle=()=>{const list=document.getElementById('objectList'),entry=el.closest('.object-entry'),offset=entry.getBoundingClientRect().top-list.getBoundingClientRect().top;if(selected===el.dataset.id){if(detailOpen){detailOpen=false;selected=null}else detailOpen=true}else{selected=el.dataset.id;detailOpen=true}renderList();const nextEntry=[...list.querySelectorAll('.object-entry')].find(item=>item.dataset.entryId===el.dataset.id),nextObject=nextEntry?.querySelector('.object');if(nextEntry){const nextOffset=nextEntry.getBoundingClientRect().top-list.getBoundingClientRect().top;list.scrollTop+=nextOffset-offset;nextObject?.focus({preventScroll:true})}};el.onclick=toggle;el.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle()}}});renderDetail();
 }
 let commentOptions=template.comments;
 let sourceZip=null,sourceSheetPath=null,sourceFileHandle=null,sourceWriteAllowed=false,sourceFilename='2026-09 Bremen Neu.xlsx',sourceOneDriveItem=null,autoSaveTimer=null,nextAutoSaveAt=0,autoSaveRunning=false,autoSaveQueued=false,dirtyAdsIds=new Set();
