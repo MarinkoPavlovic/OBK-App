@@ -408,6 +408,26 @@ function latestAdsChanges(items){const latest=new Map();for(const record of item
 function markDirty(r){if(r?.adsId!=null){r._editRevision=++editRevision;dirtyAdsIds.add(String(r.adsId).trim());syncError=''}}
 function toDateTimeLocal(value){let text=String(value||'').trim();if(!text)return '';if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text))return text.slice(0,16);let match=text.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4}|\d{2})(?:[, ]+([0-2]?\d):([0-5]\d))?/);if(match){let year=match[3].length===2?'20'+match[3]:match[3];return `${year}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}T${match[4]||'00'}:${match[5]||'00'}`}if(/^\d+(?:\.\d+)?$/.test(text)){let serial=Number(text);if(Number.isFinite(serial)&&serial>=1&&serial<2958466){let date=new Date(Date.UTC(1899,11,30)+Math.round(serial*86400000));return `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}T${String(date.getUTCHours()).padStart(2,'0')}:${String(date.getUTCMinutes()).padStart(2,'0')}`}}return ''}
 function formatGermanDateTime(value){let text=String(value||'').trim(),iso=text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);if(iso)return `${iso[3]}.${iso[2]}.${iso[1].slice(-2)}, ${iso[4]}:${iso[5]}`;let german=text.match(/^(\d{1,2})[.\/](\d{1,2})\.(\d{4}|\d{2})(?:[, ]+([0-2]?\d):([0-5]\d))?/);if(german)return `${german[1].padStart(2,'0')}.${german[2].padStart(2,'0')}.${german[3].slice(-2)}${german[4]?`, ${german[4]}:${german[5]}`:''}`;return text}
+async function removeCalculationChain(zip){
+ const relationshipPath='xl/_rels/workbook.xml.rels',relationshipFile=zip.file(relationshipPath),targets=new Set();
+ const attribute=(tag,name)=>{const match=tag.match(new RegExp('\\b'+name+'\\s*=\\s*(?:"([^"]*)"|\\x27([^\\x27]*)\\x27)','i'));return match?.[1]??match?.[2]??''};
+ const resolveTarget=target=>{const path=target.startsWith('/')?target.slice(1):'xl/'+target,parts=[];for(const part of path.replace(/\\/g,'/').split('/')){if(!part||part==='.')continue;if(part==='..')parts.pop();else parts.push(part)}return parts.join('/')};
+ if(relationshipFile){
+  let xml=await relationshipFile.async('string');
+  xml=xml.replace(/<(?:[\w.-]+:)?Relationship\b(?:"[^"]*"|'[^']*'|[^>])*\/?\s*>/g,tag=>{
+   const type=attribute(tag,'Type'),target=attribute(tag,'Target');
+   if(!/\/calcchain$/i.test(type)&&!/(?:^|\/)calcchain\.xml$/i.test(target))return tag;
+   if(target)targets.add(resolveTarget(target));
+   return '';
+  });
+  zip.file(relationshipPath,xml);
+ }
+ for(const name of Object.keys(zip.files))if(/(?:^|\/)calcchain\.xml$/i.test(name))targets.add(name);
+ if(!targets.size)return;
+ for(const target of targets)zip.remove(target);
+ const contentPath='[Content_Types].xml',contentFile=zip.file(contentPath);
+ if(contentFile){let xml=await contentFile.async('string');xml=xml.replace(/<(?:[\w.-]+:)?Override\b(?:"[^"]*"|'[^']*'|[^>])*\/?\s*>/g,tag=>{const part=attribute(tag,'PartName');return [...targets].some(target=>part.replace(/^\//,'').toLowerCase()===target.toLowerCase())?'':tag});zip.file(contentPath,xml)}
+}
 function forceWorkbookRecalculation(xml){
  const children=text=>{
   const result=[];let depth=0,current=null,closing=-1;
@@ -442,7 +462,7 @@ for(const match of xml.matchAll(rowPattern))rowXmlByNumber.set(Number(match[1]),
 const changedRowXml=new Map();
 for(const r of changedRecords){const rowNumber=Number(r._row);let rowXml=rowXmlByNumber.get(rowNumber);if(!rowXml)continue;for(let [key,col] of Object.entries(cols)){let value=key==='notizen'?noteForWorkbook(r,automatic):key==='termin'?formatGermanDateTime(r.termin):(r[key]||'');rowXml=setInlineCell(rowXml,col+r._row,value)}changedRowXml.set(rowNumber,rowXml);r.saved=!!(r.etErmittelt||r.etWohnt||r.etKontaktiert||r.bemerkung||r.termin||r.notizen)}
 xml=xml.replace(rowPattern,(rowXml,rowNumber)=>changedRowXml.get(Number(rowNumber))||rowXml);sourceZip.file(sourceSheetPath,xml);
-const workbookXml=await sourceZip.file('xl/workbook.xml').async('string');sourceZip.file('xl/workbook.xml',forceWorkbookRecalculation(workbookXml));
+await removeCalculationChain(sourceZip);const workbookXml=await sourceZip.file('xl/workbook.xml').async('string');sourceZip.file('xl/workbook.xml',forceWorkbookRecalculation(workbookXml));
 return await sourceZip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 async function performSaveWorkbook({automatic=false,deferUpload=false}={}){
@@ -513,7 +533,7 @@ async function mergeLocalChanges(remoteZip,localChanges,sheetPath=sourceSheetPat
  const changesByRow=new Map();for(const record of latestAdsChanges(localChanges)){const numbers=rowById.get(String(record.adsId).trim());if(!numbers?.length)throw Error('Objekt mit ADS-ID '+record.adsId+' fehlt in OneDrive. Die lokalen Änderungen bleiben gesichert.');for(const number of numbers)changesByRow.set(number,record)}
  xml=xml.replace(/<row\b(?=[^>]*\br=["'](\d+)["'])[^>]*>[\s\S]*?<\/row>/g,(rowXml,number)=>{const record=changesByRow.get(number);if(!record)return rowXml;for(const [key,name] of Object.entries(fields)){const value=key==='notizen'?noteForWorkbook(record,true):key==='termin'?formatGermanDateTime(record.termin):(record[key]||'');rowXml=setInlineCell(rowXml,columns[name]+number,value)}return rowXml});
  remoteZip.file(sheetPath,xml);
- const workbookXml=await remoteZip.file('xl/workbook.xml').async('string');remoteZip.file('xl/workbook.xml',forceWorkbookRecalculation(workbookXml));
+ await removeCalculationChain(remoteZip);const workbookXml=await remoteZip.file('xl/workbook.xml').async('string');remoteZip.file('xl/workbook.xml',forceWorkbookRecalculation(workbookXml));
  return await remoteZip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 async function oneDriveFilenameEndpoint(item,token){
