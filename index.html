@@ -651,8 +651,8 @@ async function resolveSharedLink(url,token){
  return item;
 }
 let activeOneDrivePickerClose=null;
-async function chooseOneDriveFile(items,token,heading='Excel-Datei auswählen',initialFolder=null){
- const available=items.filter(item=>item.kind==='file');
+async function chooseOneDriveFile(items,token,heading='Excel-Datei auswählen',initialFolder=null,showFolders=false){
+ const available=items.filter(item=>item.kind==='file'||(showFolders&&item.kind==='folder'));
  if(!available.length)throw Error('In diesem freigegebenen Ordner wurde keine Excel-Datei gefunden.');
  if(activeOneDrivePickerClose)activeOneDrivePickerClose(null);
  return new Promise(resolve=>{
@@ -752,7 +752,7 @@ async function loadOneDriveFileItem(item,token){
 async function browseOneDriveForPotenzial(){
  const token=await getAccessToken(),root={id:'root',name:'OneDrive',kind:'folder'},items=await listOneDriveFolder(root,token);
  if(!items.length){toast('Im OneDrive wurden keine Excel-Dateien oder Ordner gefunden.');return}
- const item=await chooseOneDriveFile(items,token,'Potenzialliste in OneDrive auswählen',root);if(!item)return;
+ const item=await chooseOneDriveFile(items,token,'OneDrive-Ordner durchsuchen',root,true);if(!item)return;
  if(item.parentFolder)saveSelectedFolder(item.parentFolder);
  await loadOneDriveFileItem(item,token);
 }
