@@ -169,17 +169,18 @@ async function syncBackgroundWorkbooks(){
    if(navigator.onLine===false)break;
    if(sourceOneDriveItem&&localBaseId===entry.baseId)continue;
    try{
-    const snapshot=JSON.parse(JSON.stringify(entry)),dirty=new Set(snapshot.dirty.map(String)),changes=latestAdsChanges(snapshot.records.filter(r=>dirty.has(String(r.adsId).trim())));
-    if(!changes.length)throw Error('Die lokal geänderten Objekte konnten nicht ermittelt werden.');
+    const snapshot=JSON.parse(JSON.stringify(entry)),dirty=new Set(snapshot.dirty.map(String)),changes=latestAdsChanges(snapshot.records.filter(r=>dirty.has(String(r.adsId).trim()))).filter(r=>!(['ja','1','x','true','✓'].includes(String(r.etErmittelt||'').trim().toLowerCase())&&!String(r.bemerkung||'').trim())&&!(String(r.bemerkung||'').trim().toLowerCase()==='termin mit kunden'&&appointmentDay(r)===null));
+    if(!changes.length)continue;
     const saved=await saveToOneDrive(changes,snapshot.item,false,snapshot.sheetPath);snapshot.item.eTag=saved.eTag||snapshot.item.eTag;
     await localSaveQueue;
+    const uploadedAds=new Set(changes.map(r=>String(r.adsId).trim())),remainingDirty=snapshot.dirty.filter(id=>!uploadedAds.has(String(id).trim()));
     const cached=await readCachedWorkbook();
     if(cached?.base.id===entry.baseId&&Number(cached.journal.revision||0)===Number(entry.revision||0)){
-     const journal={...cached.journal,item:snapshot.item,sheetPath:snapshot.sheetPath,dirty:[]};
+     const journal={...cached.journal,item:snapshot.item,sheetPath:snapshot.sheetPath,dirty:remainingDirty};
      let fastSaved=false;try{localStorage.setItem(workbookJournalKey,JSON.stringify(journal));fastSaved=true}catch{}
      try{await localSetting('workbookJournal',journal,true)}catch(err){if(!fastSaved)throw err}
     }
-    const index=pendingWorkbooks.indexOf(entry);if(index>=0){pendingWorkbooks.splice(index,1);try{await savePendingWorkbooks()}catch(err){pendingWorkbooks.splice(index,0,entry);throw err}}
+    const index=pendingWorkbooks.indexOf(entry);if(index>=0){if(remainingDirty.length){entry.dirty=remainingDirty;entry.item=snapshot.item}else pendingWorkbooks.splice(index,1);try{await savePendingWorkbooks()}catch(err){if(remainingDirty.length){entry.dirty=snapshot.dirty}else pendingWorkbooks.splice(index,0,entry);throw err}}
    }catch(err){backgroundSyncError=err.message||'Änderungen bleiben lokal gesichert. Bitte Verbindung und Microsoft-Anmeldung prüfen.';console.warn(err)}
   }
  })();backgroundSaving=task;updateSyncStatus();
