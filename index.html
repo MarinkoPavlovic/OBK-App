@@ -750,10 +750,23 @@ async function loadOneDriveFileItem(item,token){
  return await loadExcel(blob,null,false,{id:meta.id||item.id,driveId:parent.driveId||item.driveId,name:meta.name||item.name,path:parent.path||item.path||'',parentId:parent.id||item.parentId||'',eTag:meta.eTag||'',accountId:getSignedInAccount()?.homeAccountId||''});
 }
 async function findPotenzialFolders(token){
- let next=new URL("https://graph.microsoft.com/v1.0/me/drive/search(q='Potenzial')");
- next.searchParams.set('$select','id,name,parentReference,folder,file,remoteItem');next.searchParams.set('$top','100');const matches=[];
- while(next){const response=await fetch(next,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}});if(!response.ok){let detail='';try{detail=(await response.json()).error?.message||''}catch{}throw Error('Potenzialordner konnten nicht gesucht werden ('+response.status+'). '+detail)}const body=await response.json();for(const result of body.value||[]){const item=normalizeOneDriveSearchItem(result);if(!item||item.kind!=='folder'||!String(item.name).toLowerCase().includes('potenzial'))continue;const parentPath=String(item.path||''),parts=parentPath.replace(/^.*?root:/i,'').split('/').filter(Boolean).map(part=>{try{return decodeURIComponent(part)}catch{return part}}),adviserName=parts.at(-1)||'OneDrive';item.adviserName=adviserName;item.adviserPath=['OneDrive',...parts,item.name].join(' › ');matches.push(item)}next=body['@odata.nextLink']?new URL(body['@odata.nextLink']):null}
- const unique=new Map();for(const item of matches){const key=String(item.driveId||'me')+'|'+String(item.id);if(!unique.has(key))unique.set(key,item)}return [...unique.values()].sort((a,b)=>a.adviserName.localeCompare(b.adviserName,'de-DE')||a.name.localeCompare(b.name,'de-DE'));
+ const root={id:'root',name:'OneDrive',kind:'folder'},rootItems=await listOneDriveFolder(root,token),rootFolders=rootItems.filter(item=>item.kind==='folder');
+ const adviserPattern=/^\d+[-_\s].*[A-Za-zÄÖÜäöüß]/i,vodafoneFolders=rootFolders.filter(item=>String(item.name).toLowerCase().includes('vodafone'));
+ const containers=vodafoneFolders.length?vodafoneFolders:rootFolders;let adviserFolders=[];
+ for(const container of containers){
+  const children=await listOneDriveFolder(container,token),childFolders=children.filter(item=>item.kind==='folder');
+  const identified=childFolders.filter(item=>adviserPattern.test(String(item.name)));
+  if(identified.length)adviserFolders.push(...identified);
+  else if(adviserPattern.test(String(container.name)))adviserFolders.push(container);
+  else if(vodafoneFolders.length)adviserFolders.push(...childFolders);
+ }
+ if(!adviserFolders.length)adviserFolders=rootFolders.filter(item=>adviserPattern.test(String(item.name)));
+ if(!adviserFolders.length)adviserFolders=rootFolders;
+ const uniqueAdvisers=new Map();for(const folder of adviserFolders)uniqueAdvisers.set(String(folder.driveId||'me')+'|'+String(folder.id),folder);adviserFolders=[...uniqueAdvisers.values()];
+ const results=[];let nextIndex=0;
+ const worker=async()=>{while(nextIndex<adviserFolders.length){const index=nextIndex++,adviser=adviserFolders[index];try{const children=await listOneDriveFolder(adviser,token);for(const folder of children){if(folder.kind!=='folder'||!String(folder.name).toLowerCase().includes('potenzial'))continue;folder.adviserName=adviser.name||'Berater';folder.adviserPath=['OneDrive',String(adviser.path||'').replace(/^.*?root:/i,'').split('/').filter(Boolean).map(part=>{try{return decodeURIComponent(part)}catch{return part}}),adviser.name,folder.name].flat().filter(Boolean).join(' › ');results.push(folder)}}catch(err){console.warn('Beraterordner konnte nicht gelesen werden: '+(adviser.name||adviser.id),err)}}};
+ await Promise.all(Array.from({length:Math.min(5,adviserFolders.length)},worker));
+ return results.sort((a,b)=>a.adviserName.localeCompare(b.adviserName,'de-DE')||a.name.localeCompare(b.name,'de-DE'));
 }
 async function choosePotenzialFolder(items){
  if(activeOneDrivePickerClose)activeOneDrivePickerClose(null);
