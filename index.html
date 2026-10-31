@@ -749,10 +749,36 @@ async function loadOneDriveFileItem(item,token){
  const blob=await download.blob();Object.defineProperty(blob,'name',{value:meta.name||item.name});const parent=meta.parentReference||{};
  return await loadExcel(blob,null,false,{id:meta.id||item.id,driveId:parent.driveId||item.driveId,name:meta.name||item.name,path:parent.path||item.path||'',parentId:parent.id||item.parentId||'',eTag:meta.eTag||'',accountId:getSignedInAccount()?.homeAccountId||''});
 }
+async function findPotenzialFolders(token){
+ let next=new URL("https://graph.microsoft.com/v1.0/me/drive/search(q='Potenzial')");
+ next.searchParams.set('$select','id,name,parentReference,folder,file,remoteItem');next.searchParams.set('$top','100');const matches=[];
+ while(next){const response=await fetch(next,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}});if(!response.ok){let detail='';try{detail=(await response.json()).error?.message||''}catch{}throw Error('Potenzialordner konnten nicht gesucht werden ('+response.status+'). '+detail)}const body=await response.json();for(const result of body.value||[]){const item=normalizeOneDriveSearchItem(result);if(!item||item.kind!=='folder'||!String(item.name).toLowerCase().includes('potenzial'))continue;const parentPath=String(item.path||''),parts=parentPath.replace(/^.*?root:/i,'').split('/').filter(Boolean).map(part=>{try{return decodeURIComponent(part)}catch{return part}}),adviserName=parts.at(-1)||'OneDrive';item.adviserName=adviserName;item.adviserPath=['OneDrive',...parts,item.name].join(' › ');matches.push(item)}next=body['@odata.nextLink']?new URL(body['@odata.nextLink']):null}
+ const unique=new Map();for(const item of matches){const key=String(item.driveId||'me')+'|'+String(item.id);if(!unique.has(key))unique.set(key,item)}return [...unique.values()].sort((a,b)=>a.adviserName.localeCompare(b.adviserName,'de-DE')||a.name.localeCompare(b.name,'de-DE'));
+}
+async function choosePotenzialFolder(items){
+ if(activeOneDrivePickerClose)activeOneDrivePickerClose(null);
+ return new Promise(resolve=>{
+  const heading='Potenzialordner auswählen',overlay=document.createElement('div');overlay.className='onedrive-picker-overlay';
+  const panel=document.createElement('div');panel.className='onedrive-picker';panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label',heading);
+  const header=document.createElement('div');header.className='onedrive-picker-head';const title=document.createElement('strong');title.className='onedrive-picker-title';title.textContent=heading;
+  const cancel=document.createElement('button');cancel.type='button';cancel.className='onedrive-picker-nav';cancel.textContent='Abbrechen';const list=document.createElement('div');list.className='onedrive-picker-list';
+  header.append(title,cancel);panel.append(header,list);overlay.append(panel);document.body.append(overlay);
+  const close=value=>{document.removeEventListener('keydown',onKeydown);overlay.remove();if(activeOneDrivePickerClose===close)activeOneDrivePickerClose=null;resolve(value)};activeOneDrivePickerClose=close;
+  const onKeydown=event=>{if(event.key==='Escape')close(null)};document.addEventListener('keydown',onKeydown);cancel.onclick=()=>close(null);overlay.onclick=event=>{if(event.target===overlay)close(null)};
+  const count=document.createElement('div');count.className='onedrive-picker-empty';count.textContent=`${items.length} Potenzialordner gefunden`;
+  list.append(count);
+  for(const folder of items){const row=document.createElement('button');row.type='button';row.className='onedrive-picker-item';const icon=document.createElement('span');icon.className='onedrive-picker-icon';icon.textContent='📁';const info=document.createElement('span');info.className='onedrive-picker-info';info.style.cssText='display:flex;flex-direction:column;min-width:0';const name=document.createElement('span');name.className='onedrive-picker-name';name.textContent=folder.adviserName;const hint=document.createElement('span');hint.className='onedrive-picker-hint';hint.textContent=folder.adviserPath;info.append(name,hint);const action=document.createElement('span');action.className='onedrive-picker-hint';action.textContent='Ordner öffnen';row.append(icon,info,action);row.onclick=()=>close(folder);list.append(row)}
+  cancel.focus();
+ });
+}
 async function browseOneDriveForPotenzial(){
- const token=await getAccessToken(),root={id:'root',name:'OneDrive',kind:'folder'},items=await listOneDriveFolder(root,token);
- if(!items.length){toast('Im OneDrive wurden keine Excel-Dateien oder Ordner gefunden.');return}
- const item=await chooseOneDriveFile(items,token,'OneDrive-Ordner durchsuchen',root,true);if(!item)return;
+ const token=await getAccessToken(),folders=await findPotenzialFolders(token);
+ if(!folders.length){toast('Es wurden keine Potenzialordner gefunden.');return}
+ const folder=await choosePotenzialFolder(folders);if(!folder)return;
+ if(!saveSelectedFolder(folder))return;
+ const items=await listOneDriveFolder(folder,token);
+ if(!items.some(item=>item.kind==='file')){toast('Im Potenzialordner von '+folder.adviserName+' wurden keine Excel-Dateien gefunden.');return}
+ const item=await chooseOneDriveFile(items,token,'Excel-Datei aus dem Potenzialordner von '+folder.adviserName+' auswählen',folder);if(!item)return;
  if(item.parentFolder)saveSelectedFolder(item.parentFolder);
  await loadOneDriveFileItem(item,token);
 }
