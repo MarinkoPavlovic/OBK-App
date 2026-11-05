@@ -392,14 +392,14 @@ function requestOwnerContacted(){
 function requestOwnerRemark(){
  return new Promise(resolve=>{
   const previousFocus=document.activeElement,overlay=document.createElement('div');overlay.className='folder-link-overlay';
-  overlay.innerHTML='<div class="folder-link-dialog" role="dialog" aria-modal="true" aria-labelledby="ownerRemarkTitle" aria-describedby="ownerRemarkHelp" tabindex="-1"><h2 id="ownerRemarkTitle">Bemerkung auswählen</h2><p id="ownerRemarkHelp">Bitte wähle eine Bemerkung aus, bevor du fortfährst.</p><select id="ownerRemarkSelect" required><option value="">Bitte auswählen …</option></select><div class="folder-link-actions"><button type="button" class="btn primary" id="ownerRemarkContinue" disabled>Übernehmen</button></div></div>';
-  const dialog=overlay.querySelector('[role="dialog"]'),select=overlay.querySelector('#ownerRemarkSelect'),continueButton=overlay.querySelector('#ownerRemarkContinue');
+  overlay.innerHTML='<div class="folder-link-dialog" role="dialog" aria-modal="true" aria-labelledby="ownerRemarkTitle" aria-describedby="ownerRemarkHelp" tabindex="-1"><h2 id="ownerRemarkTitle">Bemerkung auswählen</h2><p id="ownerRemarkHelp">Bitte wähle eine Bemerkung aus, bevor du fortfährst.</p><select id="ownerRemarkSelect" required><option value="">Bitte auswählen …</option></select></div>';
+  const dialog=overlay.querySelector('[role="dialog"]'),select=overlay.querySelector('#ownerRemarkSelect');
   for(const comment of commentOptions){const option=document.createElement('option');option.value=comment;option.textContent=comment;select.append(option)}
-  select.onchange=()=>{continueButton.disabled=!select.value};
-  const keydown=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation()}if(e.key==='Tab'){e.preventDefault();const focusable=[select,continueButton].filter(item=>!item.disabled),index=focusable.indexOf(document.activeElement);focusable[(index+(e.shiftKey?-1:1)+focusable.length)%focusable.length].focus()}};
+  const finish=()=>{if(!select.value)return;const value=select.value;document.removeEventListener('keydown',keydown,true);document.removeEventListener('focusin',focusin,true);overlay.remove();if(previousFocus?.isConnected)previousFocus.focus();resolve(value)};
+  const keydown=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation()}if(e.key==='Tab'){e.preventDefault();select.focus()}};
   const focusin=e=>{if(!overlay.contains(e.target))dialog.focus()};
+  select.onchange=finish;
   document.body.appendChild(overlay);document.addEventListener('keydown',keydown,true);document.addEventListener('focusin',focusin,true);select.focus();
-  continueButton.onclick=()=>{if(!select.value)return;const value=select.value;document.removeEventListener('keydown',keydown,true);document.removeEventListener('focusin',focusin,true);overlay.remove();if(previousFocus?.isConnected)previousFocus.focus();resolve(value)};
  })
 }
 async function handleOwnerCheckboxChange(r,t,el){
