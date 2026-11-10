@@ -1,4 +1,4 @@
-const CACHE_NAME = 'objektermittlungs-app-v2.0.101';
+const CACHE_NAME = 'objektermittlungs-app-v2.0.104';
 const APP_FILES = [
   './',
   './index.html',
